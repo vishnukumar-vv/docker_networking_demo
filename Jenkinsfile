@@ -1,71 +1,73 @@
 pipeline {
-    agent any
+    agent { label 'dockergit' }
 
     environment {
-        IMAGE_NAME = "8105577060/docker_networking_demo"
-        // Use env.BUILD_NUMBER to ensure it is resolved correctly in the environment block
-        TAG = "${env.BUILD_NUMBER}"
+        // Use double quotes for string interpolation of BUILD_NUMBER
+        IMAGE = "8105577060/docker_networking_demo"
+        TAG   = "${env.BUILD_NUMBER}" 
     }
 
     stages {
-        stage('Clone Code') {
-            steps {
-                git credentialsId: 'gitHub_id',
-                    url: 'https://github.com/vishnukumar-vv/docker_networking_demo.git'
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
-                // Use double quotes to allow Groovy to interpolate the variables
-                sh "docker build -t ${IMAGE_NAME}:${TAG} ."
+                // Use double quotes in sh to allow Groovy to pass the environment variables
+                sh "docker build -t ${IMAGE}:${TAG} ."
             }
         }
 
-        stage('DockerHub Login') {
+        stage('Docker Login') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'USER',
-                    passwordVariable: 'PASS'
-                )]) {
-                    // Use double quotes so Jenkins can inject the credential variables
-                    sh "echo ${PASS} | docker login -u ${USER} --password-stdin"
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS')]) {
+                    
+                    // Passing credentials via stdin is the secure way to go
+                    sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
                 }
             }
         }
 
         stage('Push Image') {
             steps {
-                sh "docker push ${IMAGE_NAME}:${TAG}"
-                sh "docker tag ${IMAGE_NAME}:${TAG} ${IMAGE_NAME}:latest"
-                sh "docker push ${IMAGE_NAME}:latest"
+                sh "docker push ${IMAGE}:${TAG}"
             }
         }
 
         stage('Deploy Containers') {
             steps {
-                // Using double quotes for the multi-line string to resolve ${IMAGE_NAME}
                 sh """
+                # Create network if it doesn't exist
                 docker network create app_network || true
 
+                # Remove existing containers to avoid name conflicts
                 docker rm -f mysql_db || true
                 docker rm -f web_app || true
 
+                # Run MySQL
                 docker run -d --name mysql_db \
-                --network app_network \
-                -e MYSQL_ROOT_PASSWORD=root \
-                -e MYSQL_DATABASE=testdb \
-                mysql:8
+                    --network app_network \
+                    -e MYSQL_ROOT_PASSWORD=root \
+                    -e MYSQL_DATABASE=testdb \
+                    mysql:8
 
-                sleep 25
+                # Wait for DB to initialize
+                sleep 20
 
+                # Run App
                 docker run -d --name web_app \
-                --network app_network \
-                -p 8080:5000 \
-                ${IMAGE_NAME}:${TAG}
+                    --network app_network \
+                    -p 8080:5000 \
+                    ${IMAGE}:${TAG}
                 """
             }
+        }
+    }
+    
+    post {
+        always {
+            // Good practice to clean up local images to save disk space
+            sh "docker rmi ${IMAGE}:${TAG} || true"
         }
     }
 }
