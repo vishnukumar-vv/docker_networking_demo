@@ -10,8 +10,8 @@ pipeline {
     stages {
         stage('Clone Code') {
             steps {
-                // Fixed the git syntax (removed the comma and ensured proper spacing)
-                git branch: 'main', url: 'https://github.com/vishnukumar-vv/docker_networking_demo.git'
+                git credentialsId: 'gitHub_id',
+                    url: 'https://github.com/vishnukumar-vv/docker_networking_demo.git'
             }
         }
 
