@@ -35,34 +35,39 @@ pipeline {
         }
 
         stage('Deploy Containers') {
-            steps {
-                sh """
-                # Create network if it doesn't exist
-                docker network create app_network || true
+    steps {
+        sh '''
+        echo "===== Creating Docker Network ====="
+        docker network create app_network || true
 
-                # Remove existing containers to avoid name conflicts
-                docker rm -f mysql_db || true
-                docker rm -f web_app || true
+        echo "===== Listing Docker Networks ====="
+        docker network ls
 
-                # Run MySQL
-                docker run -d --name mysql_db \
-                    --network app_network \
-                    -e MYSQL_ROOT_PASSWORD=root \
-                    -e MYSQL_DATABASE=testdb \
-                    mysql:8
+        echo "===== Removing old containers ====="
+        docker rm -f mysql_db || true
+        docker rm -f web_app || true
 
-                # Wait for DB to initialize
-                sleep 20
+        echo "===== Starting MySQL Container ====="
+        docker run -d --name mysql_db \
+        --network app_network \
+        -e MYSQL_ROOT_PASSWORD=root \
+        -e MYSQL_DATABASE=testdb \
+        mysql:8
 
-                # Run App
-                docker run -d --name web_app \
-                    --network app_network \
-                    -p 8080:5000 \
-                    ${IMAGE}:${TAG}
-                """
-            }
-        }
+        echo "Waiting for DB to start..."
+        sleep 25
+
+        echo "===== Starting Web Container ====="
+        docker run -d --name web_app \
+        --network app_network \
+        -p 8090:5000 \
+        $IMAGE:$TAG
+
+        echo "===== Running Containers ====="
+        docker ps
+        '''
     }
+}
     
     post {
         always {
